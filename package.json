@@ -1,0 +1,56 @@
+{
+  "name": "@romatech/orm-providers-memory",
+  "version": "1.0.0",
+  "description": "In-memory provider for RomaTech ORM – ideal for testing",
+  "author": "RomaTech/Leandro Romanelli",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/romatech-ltda/orm-providers-memory"
+  },
+  "homepage": "https://github.com/romatech-ltda/orm-providers-memory#readme",
+  "bugs": {
+    "url": "https://github.com/romatech-ltda/orm-providers-memory/issues"
+  },
+  "keywords": [
+    "orm",
+    "in-memory",
+    "memory",
+    "testing",
+    "romatech",
+    "database",
+    "typescript"
+  ],
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "clean": "rimraf dist",
+    "build": "npm run clean && tsc",
+    "watch": "tsc --watch",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {},
+  "peerDependencies": {
+    "@romatech/orm": "^1.0.0"
+  },
+  "devDependencies": {
+    "@romatech/orm": "file:../../romatech-orm",
+    "@types/node": "^24.1.0",
+    "rimraf": "^6.0.1",
+    "typescript": "^5.9.3"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
