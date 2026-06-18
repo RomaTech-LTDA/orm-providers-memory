@@ -6,11 +6,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/romatech-ltda/orm-providers-memory"
+    "url": "https://github.com/RomaTech-LTDA/orm-providers-memory"
   },
-  "homepage": "https://github.com/romatech-ltda/orm-providers-memory#readme",
+  "homepage": "https://github.com/RomaTech-LTDA/orm-providers-memory#readme",
   "bugs": {
-    "url": "https://github.com/romatech-ltda/orm-providers-memory/issues"
+    "url": "https://github.com/RomaTech-LTDA/orm-providers-memory/issues"
   },
   "keywords": [
     "orm",
