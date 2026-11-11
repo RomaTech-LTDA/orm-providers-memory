@@ -49,6 +49,9 @@ export class MemoryProvider implements IDbProvider {
     /** Map of migration name → migration script content. */
     private migrations = new Map<string, string>();
 
+    /** State captured by `BEGIN`, restored by `ROLLBACK` (see executeQuery). */
+    private snapshot?: { tables: Map<string, TableState>; migrations: Map<string, string> };
+
     // ─── Connection Lifecycle ────────────────────────────────────────────────────
     // No-ops for in-memory — there's nothing to connect to.
 
@@ -239,7 +242,11 @@ export class MemoryProvider implements IDbProvider {
 
     /**
      * Overloaded query execution:
-     * - With `string, any[]` → simulates SQL by parsing the FROM clause.
+     * - With `string, any[]` → supports the raw statements the ORM itself
+     *   issues: `BEGIN` / `COMMIT` / `ROLLBACK` (snapshot transactions used by
+     *   `DbContext.beginTransaction()`) and `SELECT * FROM <table>`. Any other
+     *   SQL throws instead of returning unfiltered rows or silently doing
+     *   nothing.
      * - With `string, QueryObject` → uses the client-side query evaluator.
      */
     async executeQuery<T = any>(query: string, params?: any[]): Promise<T[]>;
@@ -264,6 +271,7 @@ export class MemoryProvider implements IDbProvider {
     clear(): void {
         this.tables.clear();
         this.migrations.clear();
+        this.snapshot = undefined;
     }
 
     // ─── Private Helpers ─────────────────────────────────────────────────────────
@@ -278,17 +286,46 @@ export class MemoryProvider implements IDbProvider {
     }
 
     /**
-     * Minimal SQL-like query simulator. Parses the FROM clause to find the
-     * table name, then returns all rows. Used when raw SQL strings are passed
-     * (e.g. for migration history queries).
+     * Minimal raw-SQL support. Only statements whose result can be produced
+     * exactly are accepted; everything else (WHERE clauses, UPDATE, DELETE,
+     * ...) throws, because returning all rows or doing nothing would make
+     * tests pass against behaviour a real database would not have.
      */
     private executeSqlLikeQuery<T>(sql: string): T[] {
-        const match = sql.match(/FROM\s+["'`\[]?([a-zA-Z0-9_]+)/i);
-        if (!match) {
+        const statement = sql.trim().replace(/;\s*$/, '');
+
+        if (/^(BEGIN|START)(\s+TRANSACTION)?$/i.test(statement)) {
+            if (this.snapshot) {
+                throw new Error('A transaction is already active.');
+            }
+            this.snapshot = { tables: cloneTables(this.tables), migrations: new Map(this.migrations) };
             return [];
         }
 
-        return [...this.ensureTable(match[1]).rows] as T[];
+        if (/^COMMIT(\s+TRANSACTION)?$/i.test(statement)) {
+            this.snapshot = undefined;
+            return [];
+        }
+
+        if (/^ROLLBACK(\s+TRANSACTION)?$/i.test(statement)) {
+            if (this.snapshot) {
+                this.tables = this.snapshot.tables;
+                this.migrations = this.snapshot.migrations;
+                this.snapshot = undefined;
+            }
+            return [];
+        }
+
+        const select = statement.match(/^SELECT\s+\*\s+FROM\s+(?:"([^"]+)"|`([^`]+)`|\[([^\]]+)\]|([A-Za-z_][\w$]*))$/i);
+        if (select) {
+            const tableName = select[1] ?? select[2] ?? select[3] ?? select[4];
+            return [...this.ensureTable(tableName).rows] as T[];
+        }
+
+        throw new Error(
+            `MemoryProvider cannot execute raw SQL: "${statement}". ` +
+            'Only BEGIN, COMMIT, ROLLBACK and "SELECT * FROM <table>" are supported; use the query API instead.'
+        );
     }
 
     /**
@@ -322,14 +359,33 @@ export class MemoryProvider implements IDbProvider {
     }
 
     /**
-     * Extracts the primary key value from an entity object.
-     * Returns undefined if no PK is defined or the entity is not an object.
+     * Extracts the primary key value from an entity object. Tables without a
+     * declared key use `id`, like the SQL providers do. Returns undefined if
+     * the entity is not an object or has no key value.
      */
     private getEntityKey<T>(table: TableState, entity: T): unknown {
-        if (!entity || typeof entity !== 'object' || !table.primaryKey) {
+        if (!entity || typeof entity !== 'object') {
             return undefined;
         }
 
-        return (entity as Record<string, unknown>)[table.primaryKey];
+        return (entity as Record<string, unknown>)[table.primaryKey ?? 'id'] ?? undefined;
     }
+}
+
+/**
+ * Copies every table so later writes (including in-place mutation of stored
+ * rows) do not leak into the snapshot. Rows keep their prototype.
+ */
+function cloneTables(tables: Map<string, TableState>): Map<string, TableState> {
+    const copy = new Map<string, TableState>();
+    for (const [name, table] of tables) {
+        copy.set(name, {
+            columns: [...table.columns],
+            primaryKey: table.primaryKey,
+            rows: table.rows.map(row => (row && typeof row === 'object')
+                ? Object.assign(Object.create(Object.getPrototypeOf(row)), row)
+                : row)
+        });
+    }
+    return copy;
 }

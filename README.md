@@ -127,8 +127,8 @@ afterEach(() => {
 | Aspect | Memory Provider | Real Providers |
 |--------|-----------------|----------------|
 | Persistence | None — data is lost on process exit | Durable |
-| Transactions | Not supported | Provider-dependent |
-| SQL execution | Simulated (regex-based FROM parsing) | Native driver |
+| Transactions | Snapshot `BEGIN`/`COMMIT`/`ROLLBACK` (single process) | Provider-dependent |
+| SQL execution | Only `SELECT * FROM <table>` and transaction statements; anything else throws | Native driver |
 | Concurrency | Single-threaded | Database-managed |
 | Performance | O(n) scans | Index-driven |
 
