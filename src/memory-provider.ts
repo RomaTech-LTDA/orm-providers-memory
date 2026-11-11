@@ -374,18 +374,62 @@ export class MemoryProvider implements IDbProvider {
 
 /**
  * Copies every table so later writes (including in-place mutation of stored
- * rows) do not leak into the snapshot. Rows keep their prototype.
+ * rows and of the arrays, objects and dates they hold) do not leak into the
+ * snapshot. Values are copied deeply; objects keep their prototype and
+ * shared or cyclic references keep their shape.
  */
 function cloneTables(tables: Map<string, TableState>): Map<string, TableState> {
+    const seen = new Map<object, unknown>();
     const copy = new Map<string, TableState>();
     for (const [name, table] of tables) {
         copy.set(name, {
             columns: [...table.columns],
             primaryKey: table.primaryKey,
-            rows: table.rows.map(row => (row && typeof row === 'object')
-                ? Object.assign(Object.create(Object.getPrototypeOf(row)), row)
-                : row)
+            rows: table.rows.map(row => cloneValue(row, seen))
         });
     }
     return copy;
+}
+
+function cloneValue(value: any, seen: Map<object, unknown>): any {
+    if (value === null || typeof value !== 'object') {
+        return value;
+    }
+    if (seen.has(value)) {
+        return seen.get(value);
+    }
+    if (value instanceof Date) {
+        const date = new Date(value.getTime());
+        seen.set(value, date);
+        return date;
+    }
+    if (ArrayBuffer.isView(value) || value instanceof ArrayBuffer) {
+        const buffer = typeof (value as any).slice === 'function' ? (value as any).slice(0) : value;
+        seen.set(value, buffer);
+        return buffer;
+    }
+    if (value instanceof Map) {
+        const map = new Map();
+        seen.set(value, map);
+        for (const [key, entry] of value) map.set(cloneValue(key, seen), cloneValue(entry, seen));
+        return map;
+    }
+    if (value instanceof Set) {
+        const set = new Set();
+        seen.set(value, set);
+        for (const entry of value) set.add(cloneValue(entry, seen));
+        return set;
+    }
+    if (Array.isArray(value)) {
+        const array: unknown[] = [];
+        seen.set(value, array);
+        for (const entry of value) array.push(cloneValue(entry, seen));
+        return array;
+    }
+    const object = Object.create(Object.getPrototypeOf(value));
+    seen.set(value, object);
+    for (const key of Object.keys(value)) {
+        object[key] = cloneValue(value[key], seen);
+    }
+    return object;
 }

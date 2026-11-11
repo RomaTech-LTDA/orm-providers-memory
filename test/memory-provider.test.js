@@ -62,6 +62,37 @@ describe('transactions driven by DbContext (BEGIN / COMMIT / ROLLBACK)', () => {
     assert.deepEqual(await provider.getMigrations(), []);
   });
 
+  test('ROLLBACK also undoes in-place edits of nested arrays, objects and dates', async () => {
+    class User { get label() { return `user ${this.id}`; } }
+    const provider = new MemoryProvider();
+    const user = Object.assign(new User(), {
+      id: 1,
+      roles: ['reader'],
+      profile: { city: 'A', tags: new Set(['x']) },
+      born: new Date(Date.UTC(1990, 0, 1))
+    });
+    user.self = user;
+    await provider.add(user, 'users');
+
+    await provider.executeQuery('BEGIN', []);
+    const [stored] = await provider.getAll('users');
+    stored.roles.push('admin');
+    stored.profile.city = 'B';
+    stored.profile.tags.add('y');
+    stored.born.setUTCFullYear(2000);
+    await provider.update(stored, 'users');
+    await provider.executeQuery('ROLLBACK', []);
+
+    const [restored] = await provider.getAll('users');
+    assert.deepEqual(restored.roles, ['reader']);
+    assert.equal(restored.profile.city, 'A');
+    assert.deepEqual([...restored.profile.tags], ['x']);
+    assert.equal(restored.born.toISOString(), '1990-01-01T00:00:00.000Z');
+    assert.ok(restored instanceof User, 'rows keep their class');
+    assert.equal(restored.label, 'user 1');
+    assert.equal(restored.self, restored, 'cycles are preserved');
+  });
+
   test('COMMIT keeps the changes and a nested BEGIN is rejected', async () => {
     const provider = new MemoryProvider();
     await provider.executeQuery('BEGIN', []);

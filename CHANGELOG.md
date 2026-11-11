@@ -11,7 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 - Raw SQL `WHERE` was ignored: `executeQuery('SELECT * FROM t WHERE ...', params)` (and `DbContext.rawQuery`) returned every row of the table, so code under test could pass against results a real database would never return.
 - Raw `DELETE`/`UPDATE` (including `DbContext.deleteWhere`/`updateWhere`) were silent no-ops.
-- `ROLLBACK` kept every change. `BEGIN`/`COMMIT`/`ROLLBACK` (what `DbContext.beginTransaction()` and `Transaction.commit()/rollback()` send) now implement snapshot transactions: `ROLLBACK` restores the tables and migration history captured at `BEGIN`, including in-place edits of stored rows. A nested `BEGIN` throws.
+- `ROLLBACK` kept every change. `BEGIN`/`COMMIT`/`ROLLBACK` (what `DbContext.beginTransaction()` and `Transaction.commit()/rollback()` send) now implement snapshot transactions: `ROLLBACK` restores the tables and migration history captured at `BEGIN`, including in-place edits of stored rows and of the arrays, objects, `Map`/`Set` and `Date` values they hold (the snapshot is a deep copy that keeps each row's class). A nested `BEGIN` throws.
 - Tables without a declared primary key now use `id`, like the SQL providers: `update` of a fresh object with an existing `id` threw "Entity not found", and duplicate `id` values were accepted.
 
 ### Changed
